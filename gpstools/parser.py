@@ -27,7 +27,7 @@ def load_gpx_track(filename):
 
     print('Load track %s with %d points' % (filename, len(gpx_track)))
 
-    return Track(points)
+    return Track(filename, points)
 
 
 TIME_FIELD = 'Time (s)'
@@ -55,4 +55,4 @@ def load_racechrono_csv_track(filename):
     assert len(points) >= 1
     print('Load racechrono track %s with %d points' % (filename, len(points)))
 
-    return Track(points)
+    return Track(filename, points)

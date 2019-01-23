@@ -5,6 +5,7 @@ from collections import deque
 from gpstools.utils import avg
 
 EPS = 0.00005
+DEFAULT_SPEED_SMOOTHING = 5
 
 
 # time - datetime object
@@ -25,16 +26,18 @@ class TrackPoint:
 
 class Track:
 
-    def __init__(self, gpx_points):
+    def __init__(self, name, gpx_points):
         assert len(gpx_points) > 0
 
+        self.name = name
         self._gpx_points = gpx_points
-        self._len = len(gpx_points)
+        self.len = len(gpx_points)
+        self._speed_smoothing = DEFAULT_SPEED_SMOOTHING
 
         self._check_millis_format()
 
         self._start_time = gpx_points[0].time
-        self._end_time = gpx_points[self._len - 1].time
+        self._end_time = gpx_points[self.len - 1].time
         self._total_time = self._end_time - self._start_time
 
         self.lat, self.lon, self._dist = self._calculate_dist()
@@ -43,15 +46,11 @@ class Track:
         self._total_distance = sum(self._dist)
         self._total_avg_speed = self._total_distance / self._total_time.total_seconds() * 3600
 
-        self._speed = self._calculate_speed(1)
-        self._max_speed = max(self._speed)
-        self._avg_speed = avg(self._speed)
-
     # Harry's Lap Timer writes milliseconds with a leading zero, that breaks speed calculations. Checking it
     def _check_millis_format(self):
         has_millis_precision = False
         has_full_fractions = False
-        for i in range(self._len):
+        for i in range(self.len):
             if self._gpx_points[i].time.microsecond > 0:
                 has_millis_precision = True
             if self._gpx_points[i].time.microsecond >= 100000:
@@ -59,7 +58,7 @@ class Track:
 
         if has_millis_precision and not has_full_fractions:
             print("Looks that track has incorrect milliseconds presicion format (i.e written by Harry's Lap Timer). Fixing")
-            for i in range(self._len):
+            for i in range(self.len):
                 self._gpx_points[i].time = self._gpx_points[i].time.replace(
                     microsecond=self._gpx_points[i].time.microsecond * 10
                 )
@@ -72,7 +71,7 @@ class Track:
         # zero_dist_points = 0
 
         prev_point = self._gpx_points[0]
-        for i in range(self._len):
+        for i in range(self.len):
             cur_point = self._gpx_points[i]
             lat.append(cur_point.latitude)
             lon.append(cur_point.longitude)
@@ -98,7 +97,7 @@ class Track:
         speed = []
 
         prev_point = self._gpx_points[0]
-        for i in range(self._len):
+        for i in range(self.len):
             cur_point = self._gpx_points[i]
             time_delta = cur_point.time - prev_point.time
             time_delta_micros = time_delta.seconds * 1000000 + time_delta.microseconds
@@ -121,24 +120,32 @@ class Track:
         cur_dist = 0
         dist_travelled = []
 
-        for i in range(self._len):
+        for i in range(self.len):
             cur_dist += self._dist[i]
             dist_travelled.append(cur_dist)
 
         return dist_travelled
 
     def print_stats(self):
+        speed = self._calculate_speed(self._speed_smoothing)
+        max_speed = max(speed)
+        avg_speed = avg(speed)
+
+        print('Track %s' % self.name)
         print('Start time: %s' % self._start_time)
         print('End time: %s' % self._end_time)
         print('Total time: %s' % self._total_time)
         print('Total distance travelled: %.3f km' % self._total_distance)
         print('Total average speed: %.2f kph' % self._total_avg_speed)
-        print('Max speed: %.2f kph' % self._max_speed)
-        print('Average speed: %.2f kph' % self._avg_speed)
+        print('Max speed: %.2f kph' % max_speed)
+        print('Average speed: %.2f kph' % avg_speed)
         print('\n')
 
-    def get_speed(self, speed_smoothing=3):
-        return self._calculate_speed(speed_smoothing)
+    def set_speed_smoothing(self, speed_smoothing):
+        self._speed_smoothing = speed_smoothing
+
+    def get_speed(self):
+        return self._calculate_speed(self._speed_smoothing)
 
     def determine_activity_segments(self, allowed_pause, segment_duration_threshold):
         activity_segments = []
@@ -162,7 +169,7 @@ class Track:
 
             return []
 
-        for i in range(self._len):
+        for i in range(self.len):
             if segment_start_idx is None:
                 # Marking current point as a candidate
                 segment_start_idx = i
@@ -198,14 +205,14 @@ class Track:
 
         # Adding last segment
         if segment_end_idx is None:
-            segment_end_idx = self._len - 1
+            segment_end_idx = self.len - 1
 
         activity_segments.extend(try_add_activity_segment(segment_start_idx, segment_end_idx))
 
         return activity_segments
 
-    def crop_track_to_segment(self, activity_segment):
-        return Track(self._gpx_points[activity_segment.start_idx:activity_segment.end_idx + 1])
+    def crop_track_to_segment(self, activity_segment, segment_name):
+        return Track(segment_name, self._gpx_points[activity_segment.start_idx:activity_segment.end_idx + 1])
 
 
 class TrackActivitySegment:

@@ -1,0 +1,88 @@
+function loadJson(filename, callback) {
+    var xobj = new XMLHttpRequest();
+        xobj.overrideMimeType("application/json");
+
+    xobj.open('GET', filename, true);
+    xobj.onreadystatechange = function () {
+          if (xobj.readyState == 4 && xobj.status == "200") {
+            // Required use of an anonymous callback as .open will NOT return a value but simply returns undefined in asynchronous mode
+            callback(JSON.parse(xobj.responseText));
+          }
+    };
+    xobj.send(null);
+}
+
+var series = [];
+
+loadJson('data.json', buildGraph);
+
+function buildGraph(series) {
+    names = [];
+
+    // Adding series params and constructing name
+    series.forEach(function(track, i, arr) {
+        names.push(track.name)
+        track.lineWidth = 0.5;
+    });
+
+
+    // Highcharts.setOptions({
+    //     colors: ['#058DC7', '#50B432', '#ED561B', '#DDDF00', '#24CBE5', '#64E572', '#FF9655', '#FFF263', '#6AF9C4']
+    // });
+
+    Highcharts.chart('container', {
+
+        chart: {
+//            backgroundColor: '#2b3a38',
+            zoomType: 'x'
+        },
+
+        title: {
+            text: "Медведь СУ2"
+        },
+
+        subtitle: {
+            text: names.join(' vs ')
+        },
+
+        tooltip: {
+            useHTML: true,
+            headerFormat: "<span style=\"font-size: 10px\">{point.key}</span><br/>",
+            valueDecimals: 2,
+            valueSuffix: ' kph',
+            shared: true,
+            crosshairs: true
+        },
+
+        xAxis: {
+            title: {
+                text: 'Distance from start (km)'
+            },
+            type: 'linear',
+        },
+
+        yAxis: {
+            title: {
+                text: 'Speed (kph)'
+            }
+        },
+
+        series: series,
+
+        plotOptions: {
+            line: {
+                allowPointSelect: true,
+                tooltip: {
+                }
+            }
+        },
+
+        credits: {
+            enabled: false
+        },
+
+        exporting: {
+            enabled: false
+        }
+    });
+}

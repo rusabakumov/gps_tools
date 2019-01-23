@@ -1,5 +1,7 @@
+__pycache__
 data/
 venv/
+viz/
 .ipynb_checkpoints
 .idea
 .DS_STORE

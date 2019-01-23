@@ -5,3 +5,6 @@ haversine
 lxml
 fastkml
 gmplot
+matplotlib
+seaborn
+jinja2
