@@ -1,27 +1,51 @@
 import datetime
 from datetime import datetime
-import haversine
 from collections import deque
-from gpstools.utils import avg
+from gpstools.utils import avg, get_timedelta_micros
+from gpstools.gps_utils import calculate_distance, calculate_dist_travelled
 
 EPS = 0.00005
-DEFAULT_SPEED_SMOOTHING = 5
+DEFAULT_SPEED_SMOOTHING = 1
+
+
+class Coordinates:
+
+    def __init__(self, latitude, longitude):
+        self.latitude = latitude
+        self.longitude = longitude
+
+    def __repr__(self):
+        return "Coordinate %.4f, %.4f" % (self.latitude, self.longitude)
+
+    def __eq__(self, other):
+        """Overrides the default implementation"""
+        if isinstance(other, Coordinates):
+            return self.latitude == other.latitude and self.longitude == other.longitude
+        return NotImplemented
+
+    def __hash__(self):
+        return hash((self.latitude, self.longitude))
 
 
 # time - datetime object
 # lat, lon, altitude - double
+# speed - double (m/s)
 class TrackPoint:
 
-    def __init__(self, time, latitude, longitude, altitude):
+    def __init__(self, time, latitude, longitude, altitude, speed):
         self.time = time
         self.latitude = latitude
         self.longitude = longitude
         self.altitude = altitude
+        self.speed = speed
 
     def __repr__(self):
-        return "Point %.4f, %.4f at %s" % (
-            self.latitude, self.longitude, datetime.strftime(self.time, '%Y-%m-%dT%H:%M:%S.%f')
+        return "Point %.4f, %.4f at %s, speed %.4f m/s" % (
+            self.latitude, self.longitude, datetime.strftime(self.time, '%Y-%m-%dT%H:%M:%S.%f'), self.speed
         )
+
+    def get_coords(self):
+        return Coordinates(self.latitude, self.longitude)
 
 
 class Track:
@@ -34,14 +58,15 @@ class Track:
         self.len = len(gpx_points)
         self._speed_smoothing = DEFAULT_SPEED_SMOOTHING
 
+        self.subsecond_precision = False
         self._check_millis_format()
 
         self._start_time = gpx_points[0].time
         self._end_time = gpx_points[self.len - 1].time
         self._total_time = self._end_time - self._start_time
 
-        self.lat, self.lon, self._dist = self._calculate_dist()
-        self.dist_travelled = self._calculate_dist_travelled()
+        self.lat, self.lon, self._time, self._dist = calculate_distance(self._gpx_points)
+        self.dist_travelled = calculate_dist_travelled(self._dist)
 
         self._total_distance = sum(self._dist)
         self._total_avg_speed = self._total_distance / self._total_time.total_seconds() * 3600
@@ -56,6 +81,9 @@ class Track:
             if self._gpx_points[i].time.microsecond >= 100000:
                 has_full_fractions = True
 
+        if has_millis_precision:
+            self.subsecond_precision = True
+
         if has_millis_precision and not has_full_fractions:
             print("Looks that track has incorrect milliseconds presicion format (i.e written by Harry's Lap Timer). Fixing")
             for i in range(self.len):
@@ -63,68 +91,56 @@ class Track:
                     microsecond=self._gpx_points[i].time.microsecond * 10
                 )
 
-    def _calculate_dist(self):
-        lat = []
-        lon = []
-        dist = []
-
-        # zero_dist_points = 0
-
-        prev_point = self._gpx_points[0]
-        for i in range(self.len):
-            cur_point = self._gpx_points[i]
-            lat.append(cur_point.latitude)
-            lon.append(cur_point.longitude)
-            if i == 0:
-                dist.append(0.0)
-            else:
-                cur_dist = haversine.haversine(
-                    (cur_point.latitude, cur_point.longitude),
-                    (prev_point.latitude, prev_point.longitude)
-                )
-                # if (cur_dist < EPS):
-                # zero_dist_points += 1
-                dist.append(cur_dist)
-            prev_point = cur_point
-
-        # print("Zero dist points: %d" % zero_dist_points)
-
-        return lat, lon, dist
-
+    """Use built-in gps speed data and converts it to kph units"""
     def _calculate_speed(self, window_size):
         assert window_size >= 1
         speed_window = deque()
         speed = []
 
-        prev_point = self._gpx_points[0]
         for i in range(self.len):
             cur_point = self._gpx_points[i]
-            time_delta = cur_point.time - prev_point.time
-            time_delta_micros = time_delta.seconds * 1000000 + time_delta.microseconds
-            if time_delta_micros == 0:
-                cur_speed = 0
-            else:
-                cur_speed = self._dist[i] / time_delta_micros * 1000000 * 3600
-
-            speed_window.append(cur_speed)
+            speed_window.append(cur_point.speed * 3.6)
 
             if len(speed_window) > window_size:
                 speed_window.popleft()
 
-            speed.append(avg(speed_window))
-            prev_point = cur_point
+            speed_window_without_zeros = list(filter(lambda x: x != 0.0, speed_window))
+            if len(speed_window_without_zeros) == 0:
+                speed.append(0)
+            else:
+                speed.append(avg(speed_window_without_zeros))
 
         return speed
 
-    def _calculate_dist_travelled(self):
-        cur_dist = 0
-        dist_travelled = []
-
-        for i in range(self.len):
-            cur_dist += self._dist[i]
-            dist_travelled.append(cur_dist)
-
-        return dist_travelled
+    # Obsolete method based on inaccurate data
+    # def _calculate_speed(self, window_size):
+    #     assert window_size >= 1
+    #     speed_window = deque()
+    #     speed = []
+    #
+    #     prev_point = self._gpx_points[0]
+    #     for i in range(self.len):
+    #         cur_point = self._gpx_points[i]
+    #         time_delta_micros = get_timedelta_micros(cur_point.time, prev_point.time)
+    #         if time_delta_micros == 0:
+    #             cur_speed = 0
+    #         else:
+    #             cur_speed = self._dist[i] / time_delta_micros * 1000000 * 3600
+    #
+    #         speed_window.append(cur_speed)
+    #
+    #         if len(speed_window) > window_size:
+    #             speed_window.popleft()
+    #
+    #         speed_window_without_zeros = list(filter(lambda x: x != 0.0, speed_window))
+    #         if len(speed_window_without_zeros) == 0:
+    #             speed.append(0)
+    #         else:
+    #             speed.append(avg(speed_window_without_zeros))
+    #
+    #         prev_point = cur_point
+    #
+    #     return speed
 
     def print_stats(self):
         speed = self._calculate_speed(self._speed_smoothing)
@@ -146,6 +162,9 @@ class Track:
 
     def get_speed(self):
         return self._calculate_speed(self._speed_smoothing)
+
+    def get_points(self):
+        return self._gpx_points
 
     def determine_activity_segments(self, allowed_pause, segment_duration_threshold):
         activity_segments = []
@@ -184,7 +203,7 @@ class Track:
                     else:
                         # We detected stop in current active segment, should check whether it's the end
                         if segment_end_idx is not None:
-                            # We are already stopped, calculationg time passed
+                            # We are already stopped, calculating time passed
                             cur_pause = (self._gpx_points[i].time - self._gpx_points[
                                 segment_end_idx].time).total_seconds()
                             if cur_pause > allowed_pause:
@@ -221,6 +240,8 @@ class TrackActivitySegment:
         self._idx = idx
         self.start_idx = start_idx
         self.end_idx = end_idx
+        self.start_point = start_point
+        self.end_point = end_point
 
         self._start_time = start_point.time
         self._end_time = end_point.time

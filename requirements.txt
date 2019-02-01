@@ -8,3 +8,4 @@ gmplot
 matplotlib
 seaborn
 jinja2
+python-dateutil
