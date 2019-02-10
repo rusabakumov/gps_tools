@@ -80,8 +80,10 @@ def load_racechrono_csv_track(filename, name):
     points = []
     for row in track:
         try:
-            time_seconds = int(float(row[RACECHRONO_TIME_FIELD]))
-            time = datetime.fromtimestamp(time_seconds)
+            time_seconds_float = float(row[RACECHRONO_TIME_FIELD])
+            time_seconds = int(time_seconds_float)
+            time_microseconds = int(time_seconds_float % 1 * 1000000)
+            time = datetime.fromtimestamp(time_seconds).replace(microsecond=time_microseconds)
             points.append(TrackPoint(
                 time=time,
                 latitude=float(row[RACECHRONO_LAT_FIELD]),

@@ -6,6 +6,7 @@ import getopt
 from collections import namedtuple
 from gpstools.parser import *
 from gpstools.gps_utils import get_dist
+from gpstools.config import START_RADIUS_KM
 
 
 CSV_EXTENSION = 'csv'
@@ -14,7 +15,6 @@ SUPPORTED_EXTENSIONS = [CSV_EXTENSION, GPX_EXTENSION]
 ACTIVITY_DISTANCE_THRESHOLD_KM = 2.0
 
 TrackFile = namedtuple('TrackFile', ['path', 'name', 'ext'])
-TrackWithActivitySegments = namedtuple('TrackWithActivitySegments', ['track', 'segments'])
 
 
 def load_tracks(path):
@@ -56,8 +56,8 @@ def load_tracks(path):
 def find_common_activity_segments(tracks):
     tracks_with_activity = []
     for track in tracks:
-        tracks_with_activity.append(TrackWithActivitySegments(track, track.determine_activity_segments(allowed_pause=5,
-                                                                                                       segment_duration_threshold=100)))
+        tracks_with_activity.append(TrackWithActivitySegments(track, track.get_activity_segments()))
+
     activity_start_points = {}
     for track in tracks_with_activity:
         for segment in track.segments:
@@ -81,18 +81,61 @@ def find_common_activity_segments(tracks):
 
     print("Found suitable start location at %s with %d segments" % (str(most_popular_coord), max_value))
 
+    return select_activity_segments_by_start_point(most_popular_coord, tracks_with_activity)
+
+
+def select_activity_segments_by_start_point(reference_coords, tracks):
     cropped_tracks = []
-    for track in tracks_with_activity:
+    for track in tracks:
         segment_id = 1
-        for segment in track.segments:
+        for segment in track.get_activity_segments():
             start_coords = segment.start_point.get_coords()
-            if get_dist(start_coords, most_popular_coord) < START_RADIUS_KM:
+            if get_dist(start_coords, reference_coords) < START_RADIUS_KM:
                 cropped_tracks.append(
-                    track.track.crop_track_to_segment(segment, track.track.name + "_" + str(segment_id))
+                    track.crop_to_activity_segment(segment, track.name + "_" + str(segment_id))
                 )
                 segment_id += 1
 
     return cropped_tracks
+
+
+def select_segments_by_reference_track(reference_track, tracks, allowed_pause, segment_duration_threshold):
+    cropped_tracks = []
+    tracks_finished = []
+    for track in tracks:
+        segment_id = 1
+        for segment in track.get_activity_segments(allowed_pause, segment_duration_threshold):
+            start_coords = segment.start_point.get_coords()
+            if get_dist(start_coords, reference_track.start_point.get_coords()) < START_RADIUS_KM:
+                name_postfix = ""
+                if segment_id > 1:
+                    name_postfix = "_#" + str(segment_id)
+
+                track_by_segment = track.crop_to_activity_segment_start(segment, track.name + name_postfix)
+                finish_index = track_by_segment.find_point_index(reference_track.finish_point)
+
+                cropped_track = None
+                if finish_index is None:
+                    cropped_track = track_by_segment
+                    tracks_finished.append(False)
+                else:
+                    cropped_track = track_by_segment.crop_to_point_idx(finish_index)
+                    tracks_finished.append(True)
+
+                cropped_tracks.append(cropped_track)
+
+                segment_id += 1
+
+    return cropped_tracks, tracks_finished
+
+
+def filter_tracks_by_reference(reference_track, tracks):
+    filtered_tracks = []
+    for track in tracks:
+        if track.contains_point(reference_track.start_point):
+            filtered_tracks.append(track)
+
+    return filtered_tracks
 
 
 def print_tracks_stats(tracks):

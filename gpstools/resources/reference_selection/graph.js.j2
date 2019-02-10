@@ -16,13 +16,43 @@ var series = [];
 
 loadJson('data.json', buildGraph);
 
-function buildGraph(series) {
+function tooltipFormatter() {
+    first = this.points[0];
+    str = '<b>dist:</b> ' + first.x.toFixed(2) + '</br><b>idx:</b> ' + first.point.idx +
+        '</br><b>time:</b> ' + formatDuration(first.point.micros);
+
+    this.points.forEach(function (point) {
+        value = '<b>' + point.series.name + '</b>: ' + point.point.y.toFixed(2);
+        str = str + '</br>' + value;
+    })
+
+    return str
+}
+
+function formatDuration(micros) {
+    minutes = Math.floor(micros / 60000000);
+    seconds = Math.floor(micros % 60000000 / 1000000);
+    millis = Math.round(micros % 1000000 / 100000);
+    return formatInt(minutes, 2) + ':' + formatInt(seconds, 2) + '.' + formatInt(millis, 1);
+}
+
+function formatInt(num, length) {
+    var r = "" + num;
+    while (r.length < length) {
+        r = "0" + r;
+    }
+    return r;
+}
+
+function buildGraph(data) {
+    series = data.tracks;
     names = [];
 
     // Adding series params and constructing name
     series.forEach(function(track, i, arr) {
         names.push(track.name)
         track.lineWidth = track.line_width;
+        track.turboThreshold = 0;
     });
 
 
@@ -38,7 +68,7 @@ function buildGraph(series) {
         },
 
         title: {
-            text: "{{ graph_title }}"
+            text: "Select reference point index!"
         },
 
         subtitle: {
@@ -47,7 +77,7 @@ function buildGraph(series) {
 
         tooltip: {
             useHTML: true,
-            headerFormat: "<span style=\"font-size: 10px\">{point.key}</span><br/>",
+            formatter: tooltipFormatter,
             valueDecimals: 2,
             valueSuffix: ' kph',
             shared: true,

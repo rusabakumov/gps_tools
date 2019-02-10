@@ -2,9 +2,15 @@ import matplotlib.pyplot as plt
 import json
 import os
 from jinja2 import Environment, PackageLoader
+from gmplot import gmplot
+import random
+import string
+import shutil
+import gpstools
 
 COLORS = ['red', 'blue', 'black', 'green']
 
+TMP_PATH = 'tmp'
 GRAPH_OUTPUT_PATH = 'viz'
 GRAPH_HTML_FILE = 'graph.html'
 GRAPH_JS_FILE = 'graph.js'
@@ -35,7 +41,7 @@ def plot_distance_speed_graph_for_tracks(tracks):
     for i in range(len(tracks)):
         track = tracks[i]
         color = COLORS[i]
-        plt.plot(track.dist_travelled, track.get_speed(), color=color, lw=0.75, alpha=0.8)
+        plt.plot(track.get_dist(), track.get_speed(), color=color, lw=0.75, alpha=0.8)
 
 
 # Uses dist_travelled from aligned
@@ -62,9 +68,19 @@ def plot_aligned_distance_speed_graph(reference_track, aligned_tracks, unaligned
 # Generates separate folder with html and js to show
 def generate_distance_speed_graph(name, graph_title, tracks):
     graph_path = os.path.join(GRAPH_OUTPUT_PATH, name)
-    os.makedirs(graph_path)
+    module_path = os.path.dirname(gpstools.__file__)
+    shutil.copytree(os.path.join(module_path, 'resources', 'speed_comparison'), graph_path)  # Fails if directory already exists
+    _output_distance_speed_json(os.path.join(graph_path, GRAPH_DATA_FILE), graph_title, tracks)
 
-    env = Environment(loader=PackageLoader('gpstools', 'templates'))
+
+# Generates separate folder with html and js to show
+def generate_reference_selection_graph(tracks):
+    rand_token = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+
+    graph_path = os.path.join(TMP_PATH, rand_token)
+    os.makedirs(graph_path, exist_ok=True)
+
+    env = Environment(loader=PackageLoader('gpstools', 'resources/reference_selection'))
     html_template = env.get_template(GRAPH_HTML_FILE + '.j2')
     js_template = env.get_template(GRAPH_JS_FILE + '.j2')
 
@@ -72,62 +88,45 @@ def generate_distance_speed_graph(name, graph_title, tracks):
         html_template.stream().dump(html_file)
 
     with open(os.path.join(graph_path, GRAPH_JS_FILE), 'w') as js_file:
-        js_template.stream(graph_title=graph_title).dump(js_file)
+        js_template.stream().dump(js_file)
 
-    _output_distance_speed_json(os.path.join(graph_path, GRAPH_DATA_FILE), tracks)
+    _output_distance_speed_json(os.path.join(graph_path, GRAPH_DATA_FILE), "reference selection", tracks)
 
-
-# Generates separate folder with html and js to show
-def generate_aligned_distance_speed_graph(name, graph_title, tracks):
-    graph_path = os.path.join(GRAPH_OUTPUT_PATH, name)
-    os.makedirs(graph_path)
-
-    env = Environment(loader=PackageLoader('gpstools', 'templates'))
-    html_template = env.get_template(GRAPH_HTML_FILE + '.j2')
-    js_template = env.get_template(GRAPH_JS_FILE + '.j2')
-
-    with open(os.path.join(graph_path, GRAPH_HTML_FILE), 'w') as html_file:
-        html_template.stream(graph_title=graph_title).dump(html_file)
-
-    with open(os.path.join(graph_path, GRAPH_JS_FILE), 'w') as js_file:
-        js_template.stream(graph_title=graph_title).dump(js_file)
-
-    _output_distance_speed_json_aligned(os.path.join(graph_path, GRAPH_DATA_FILE), tracks)
+    return graph_path
 
 
-def _output_distance_speed_json(filename, tracks):
+def _output_distance_speed_json(filename, title, tracks):
     with open(filename, "w+") as json_file:
         tracks_json = []
         for track in tracks:
             data = []
+            dist_data = track.get_dist()
             speed_data = track.get_speed()
             for i in range(track.len):
-                data.append((track.dist_travelled[i], speed_data[i]))
+                data.append({
+                    'x': dist_data[i],
+                    'y': speed_data[i],
+                    'idx': i,
+                    'micros': track.micros[i]
+                })
 
             tracks_json.append({
                 "name": track.name,
-                "data": data
-            })
-
-        json.dump(tracks_json, json_file)
-
-
-def _output_distance_speed_json_aligned(filename, tracks):
-    with open(filename, "w+") as json_file:
-        tracks_json = []
-        for track in tracks:
-            data = []
-            speed_data = track.get_speed()
-            for i in range(track.len):
-                data.append((track.aligned_dist[i], speed_data[i]))
-
-            tracks_json.append({
-                "name": track.name,
+                "duration": track.micros[-1],
+                "max_speed": track.max_speed,
+                "avg_speed": track.avg_speed,
+                "finished": track.finished,
                 "data": data,
                 "line_width": 1.0 if not track.subsecond_precision else 0.5
             })
 
-        json.dump(tracks_json, json_file)
+        json.dump(
+            {
+                "title": title,
+                "tracks": tracks_json
+            },
+            json_file
+        )
 
 
 def plot_2d_track(track):
@@ -137,3 +136,19 @@ def plot_2d_track(track):
     ax.set_axis_off()
     fig.add_axes(ax)
     plt.plot(track.lon, track.lat, color='deepskyblue', lw=0.3, alpha=0.8)
+
+
+def plot_google_maps_track(track, filename):
+    min_lat, max_lat, min_lon, max_lon = \
+        min(track.lat), max(track.lat), \
+        min(track.lon), max(track.lon)
+
+    # Create empty map with zoom level 16
+    mymap = gmplot.GoogleMapPlotter(
+        min_lat + (max_lat - min_lat) / 2,
+        min_lon + (max_lon - min_lon) / 2,
+        16)
+
+    mymap.plot(track.lat, track.lon, 'blue', edge_width=1)
+
+    mymap.draw(filename)
