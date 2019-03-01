@@ -7,7 +7,7 @@ from gpstools.config import POINT_DISTANCE_THRESHOLD_KM
 from gpstools.config import ACTIVITY_DEFAULT_DURATION_THRESHOLD, ACTIVITY_DEFAULT_PAUSE
 
 
-EPS = 0.0005
+EPS = 0.00005
 SPEED_EPS = 40  # kph
 DEFAULT_SPEED_SMOOTHING = 1
 DEFAULT_10HZ_SPEED_SMOOTHING = 3
@@ -105,7 +105,8 @@ class Track:
         so we need to fall back to inaccurate speed calculation methods
         """
         for point in self._gpx_points:
-            if not point.speed:
+            if point.speed is None:
+                print('Point without speed %s!' % str(point))
                 self._speed_data_available = False
 
     def _check_millis_format(self):
@@ -131,7 +132,7 @@ class Track:
 
         if has_millis_precision and not has_full_fractions:
             print("Looks that track has incorrect milliseconds presicion format (i.e written by Harry's Lap Timer). Fixing")
-            for i in range(self.len):
+            for i in range(len(self._gpx_points)):
                 self._gpx_points[i].time = self._gpx_points[i].time.replace(
                     microsecond=self._gpx_points[i].time.microsecond * 10
                 )
@@ -203,8 +204,10 @@ class Track:
 
     def get_speed(self):
         if self._speed_data_available:
+            print('Using built-in speed')
             return self._calculate_speed(self._speed_smoothing)
         else:
+            print('Calculating speed based on distance')
             return self._calculate_speed_by_distance(self._speed_smoothing)
 
     def get_dist(self):

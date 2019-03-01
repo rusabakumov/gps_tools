@@ -9,6 +9,7 @@ import shutil
 import gpstools
 
 COLORS = ['red', 'blue', 'black', 'green']
+COLOR_CODES = ['#4062f9', '#f44b42', '#45e069', '#fff049', '#24CBE5', '#2c6633', '#45215b', '#3c6887', '#52f2b7', '#ff3dbb', '#ff8f26']
 
 TMP_PATH = 'tmp'
 GRAPH_OUTPUT_PATH = 'viz'
@@ -98,7 +99,9 @@ def generate_reference_selection_graph(tracks):
 def _output_distance_speed_json(filename, title, tracks):
     with open(filename, "w+") as json_file:
         tracks_json = []
-        for track in tracks:
+        for i in range(len(tracks)):
+            track = tracks[i]
+            color_code = COLOR_CODES[i]
             data = []
             dist_data = track.get_dist()
             speed_data = track.get_speed()
@@ -106,6 +109,8 @@ def _output_distance_speed_json(filename, title, tracks):
                 data.append({
                     'x': dist_data[i],
                     'y': speed_data[i],
+                    'lat': track.lat[i],
+                    'lon': track.lon[i],
                     'idx': i,
                     'micros': track.micros[i]
                 })
@@ -116,6 +121,7 @@ def _output_distance_speed_json(filename, title, tracks):
                 "max_speed": track.max_speed,
                 "avg_speed": track.avg_speed,
                 "finished": track.finished,
+                "color": color_code,
                 "data": data,
                 "line_width": 1.0 if not track.subsecond_precision else 0.5
             })

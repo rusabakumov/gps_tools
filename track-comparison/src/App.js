@@ -6,6 +6,7 @@ import Container from 'react-bootstrap/Container';
 import Row from 'react-bootstrap/Row';
 import Col from 'react-bootstrap/Col';
 import StatsTable from './StatsTable';
+import GoogleMap from './GoogleMap'
 
 import Highcharts from 'highcharts';
 
@@ -48,6 +49,9 @@ class App extends Component {
           <Row>
             <Col><StatsTable tracks={this.state.tracks} sector={this.state.sector}/></Col>
           </Row>
+          <Row>
+            <Col><GoogleMap tracks={this.state.tracks}/></Col>
+          </Row>
         </Container>
       </div>
     )
@@ -76,11 +80,6 @@ class App extends Component {
         names.push(track.name)
         track.lineWidth = track.line_width;
         track.turboThreshold = 0;
-    });
-
-
-    Highcharts.setOptions({
-        colors: ['#002eff', '#f44b42', '#3ee866', '#ddcf30', '#24CBE5', '#2c6633', '#45215b', '#FFF263', '#6AF9C4']
     });
 
     return Highcharts.chart('graph', {

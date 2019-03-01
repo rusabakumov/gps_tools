@@ -20,10 +20,14 @@ def load_gpx_track(filename, name):
     gpx = gpxpy.parse(gpx_file)
 
     if len(gpx.tracks) != 1:
-        raise TrackParsingError("GPX track with multiple tracks!"
-                                )
+        raise TrackParsingError("GPX track with multiple tracks!")
     if len(gpx.tracks[0].segments) != 1:
         raise TrackParsingError("GPX track with multiple segments!")
+
+    speed_in_mps = True
+    print('Parsing %s gpx track' % gpx.creator)
+    if gpx.creator == 'Racebox':
+        speed_in_mps = False
 
     gpx_track = gpx.tracks[0].segments[0].points
 
@@ -32,12 +36,18 @@ def load_gpx_track(filename, name):
 
     points = []
     for point in gpx_track:
+        speed = None
+        if point.speed is None:
+            speed = 0.0
+        else:
+            speed = point.speed if speed_in_mps else float(point.speed) / 3.6
+
         points.append(TrackPoint(
             time=point.time,
             latitude=point.latitude,
             longitude=point.longitude,
             altitude=point.elevation,
-            speed=point.speed
+            speed=speed
         ))
 
     print('Load track %s with %d points' % (filename, len(gpx_track)))
