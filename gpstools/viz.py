@@ -1,11 +1,11 @@
-import matplotlib.pyplot as plt
 import json
+import matplotlib.pyplot as plt
 import os
-from jinja2 import Environment, PackageLoader
-from gmplot import gmplot
 import random
-import string
 import shutil
+import string
+from jinja2 import Environment, PackageLoader
+
 import gpstools
 
 COLORS = ['red', 'blue', 'black', 'green']
@@ -18,21 +18,7 @@ GRAPH_JS_FILE = 'graph.js'
 GRAPH_DATA_FILE = 'data.json'
 
 
-def plot_distance_speed_graph(distances, speeds):
-    assert len(distances) == len(speeds)
-
-    fig = plt.figure()
-    ax = plt.Axes(fig, [0., 0., 2.5, 2.5], )
-    plt.xlabel('distance (km)')
-    plt.ylabel('speed (kph)')
-    fig.add_axes(ax)
-
-    for i in range(len(distances)):
-        color = COLORS[i]
-        plt.plot(distances[i], speeds[i], color=color, lw=0.75, alpha=0.8)
-
-
-def plot_distance_speed_graph_for_tracks(tracks):
+def plot_distance_speed_graph(tracks):
     fig = plt.figure()
     ax = plt.Axes(fig, [0., 0., 2.5, 2.5], )
     plt.xlabel('distance (km)')
@@ -42,40 +28,15 @@ def plot_distance_speed_graph_for_tracks(tracks):
     for i in range(len(tracks)):
         track = tracks[i]
         color = COLORS[i]
-        plt.plot(track.get_dist(), track.get_speed(), color=color, lw=0.75, alpha=0.8)
+        plt.plot(track.dist_from_start, track.speed, color=color, lw=0.75, alpha=0.8)
 
 
-# Uses dist_travelled from aligned
-def plot_aligned_distance_speed_graph(reference_track, aligned_tracks, unaligned_tracks):
-    fig = plt.figure()
-    ax = plt.Axes(fig, [0., 0., 2.5, 2.5], )
-    plt.xlabel('distance (km)')
-    plt.ylabel('speed (kph)')
-    fig.add_axes(ax)
-
-    unaligned = len(unaligned_tracks)
-
-    for i in range(unaligned):
-        track = unaligned_tracks[i]
-        color = COLORS[i]
-        plt.plot(track.dist_travelled, track.get_speed(), color=color, lw=0.75, alpha=0.8)
-
-    for i in range(len(aligned_tracks)):
-        track = aligned_tracks[i]
-        color = COLORS[i + unaligned]
-        plt.plot(reference_track.dist_travelled, track.get_speed(), color=color, lw=0.75, alpha=0.8)
-
-
-# Generates separate folder with html and js to show
-def generate_distance_speed_graph(name, graph_title, tracks):
-    graph_path = os.path.join(GRAPH_OUTPUT_PATH, name)
-    module_path = os.path.dirname(gpstools.__file__)
-    shutil.copytree(os.path.join(module_path, 'resources', 'speed_comparison'), graph_path)  # Fails if directory already exists
-    _output_distance_speed_json(os.path.join(graph_path, GRAPH_DATA_FILE), graph_title, tracks)
-
-
-# Generates separate folder with html and js to show
 def generate_reference_selection_graph(tracks):
+    """
+    Plots distance/speed graphs of given tracks with point indices. Used for track limits selection during reference
+    building. Generates separate folder with html and js to show in browser
+    """
+
     rand_token = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
 
     graph_path = os.path.join(TMP_PATH, rand_token)
@@ -91,12 +52,91 @@ def generate_reference_selection_graph(tracks):
     with open(os.path.join(graph_path, GRAPH_JS_FILE), 'w') as js_file:
         js_template.stream().dump(js_file)
 
-    _output_distance_speed_json(os.path.join(graph_path, GRAPH_DATA_FILE), "reference selection", tracks)
+    with open(os.path.join(graph_path, GRAPH_DATA_FILE), "w+") as json_file:
+        tracks_json = []
+        for i in range(len(tracks)):
+            track = tracks[i]
+            data = []
+            for i in range(track.len):
+                data.append({
+                    'idx': i,
+                    'x': track.dist_from_start[i],
+                    'y': track.speed[i],
+                    'micros': track.micros_from_start[i]
+                })
+
+            tracks_json.append({
+                "name": track.name,
+                "data": data,
+                "line_width": 1.0 if not track.subsecond_precision else 0.5
+            })
+
+        json.dump(
+            {
+                "title": "Reference selection",
+                "tracks": tracks_json
+            },
+            json_file
+        )
 
     return graph_path
 
 
-def _output_distance_speed_json(filename, title, tracks):
+def generate_tracks_map(tracks):
+    """
+    Plots distance/speed graphs of given tracks with point indices. Used for track limits selection during reference
+    building. Generates separate folder with html and js to show in browser
+    """
+
+    rand_token = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+
+    graph_path = os.path.join(TMP_PATH, rand_token)
+    module_path = os.path.dirname(gpstools.__file__)
+
+    shutil.copytree(os.path.join(module_path, 'resources', 'tracks_map'),
+                    graph_path)  # Fails if directory already exists
+    _output_tracks_map_json(os.path.join(graph_path, GRAPH_DATA_FILE), tracks)
+    return graph_path
+
+
+def _output_tracks_map_json(filename, tracks):
+    with open(filename, "w+") as json_file:
+        tracks_json = []
+        for i in range(len(tracks)):
+            track = tracks[i]
+            color_code = COLOR_CODES[i]
+            data = []
+            for i in range(track.len):
+                data.append({
+                    'lat': track.lat[i],
+                    'lon': track.lon[i]
+                })
+
+            tracks_json.append({
+                "name": track.name,
+                "color": color_code,
+                "data": data,
+                "line_width": 1.0 if not track.subsecond_precision else 0.5
+            })
+
+        json.dump(
+            {
+                "tracks": tracks_json
+            },
+            json_file
+        )
+
+
+# Generates separate folder with html and js to show
+# TODO Not working, fix for new SSComparison structure
+def generate_ss_analysis_graph(name, graph_title, tracks):
+    graph_path = os.path.join(GRAPH_OUTPUT_PATH, name)
+    module_path = os.path.dirname(gpstools.__file__)
+    shutil.copytree(os.path.join(module_path, 'resources', 'speed_comparison'), graph_path)  # Fails if directory already exists
+    _output_ss_comparison_json(os.path.join(graph_path, GRAPH_DATA_FILE), graph_title, tracks)
+
+
+def _output_ss_comparison_json(filename, title, tracks):
     with open(filename, "w+") as json_file:
         tracks_json = []
         for i in range(len(tracks)):
@@ -133,28 +173,3 @@ def _output_distance_speed_json(filename, title, tracks):
             },
             json_file
         )
-
-
-def plot_2d_track(track):
-    fig = plt.figure(facecolor='0.25')
-    ax = plt.Axes(fig, [0., 0., 2., 2.], )
-    ax.set_aspect('equal')
-    ax.set_axis_off()
-    fig.add_axes(ax)
-    plt.plot(track.lon, track.lat, color='deepskyblue', lw=0.3, alpha=0.8)
-
-
-def plot_google_maps_track(track, filename):
-    min_lat, max_lat, min_lon, max_lon = \
-        min(track.lat), max(track.lat), \
-        min(track.lon), max(track.lon)
-
-    # Create empty map with zoom level 16
-    mymap = gmplot.GoogleMapPlotter(
-        min_lat + (max_lat - min_lat) / 2,
-        min_lon + (max_lon - min_lon) / 2,
-        16)
-
-    mymap.plot(track.lat, track.lon, 'blue', edge_width=1)
-
-    mymap.draw(filename)

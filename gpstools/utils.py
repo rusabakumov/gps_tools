@@ -1,3 +1,6 @@
+import haversine
+
+
 def avg(l):
     assert len(l) > 0
 
@@ -39,3 +42,19 @@ def get_numeric_array_stats_without_zeros(l):
 def get_timedelta_micros(time1, time2):
     time_delta = time1 - time2
     return time_delta.seconds * 1000000 + time_delta.microseconds
+
+
+# Calculates haversine dist between two TrackPoint or Coordinates objects
+def get_dist(point1, point2):
+    return haversine.haversine(
+        (point1.latitude, point1.longitude),
+        (point2.latitude, point2.longitude)
+    )
+
+
+def print_tracks_stats(tracks):
+    print("Total %d tracks" % len(tracks))
+    for i in range(len(tracks)):
+        print("%d:" % i)
+        tracks[i].print_stats()
+
