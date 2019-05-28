@@ -72,8 +72,8 @@ def _load_track_file(file):
         elif file.ext == CSV_EXTENSION:
             try:
                 points = _load_racebox_csv_points(file.path)
-            except TrackParsingError:
-                print("Looks like not a racebox track, trying racechrono format")
+            except TrackParsingError as err:
+                print("Looks like not a racebox track, trying racechrono format, error was %s" % err.message)
                 points = _load_racechrono_csv_points(file.path)
         else:
             raise TrackParsingError("File %s is not supported!" % file.path)
@@ -113,10 +113,11 @@ def _load_gpx_points(filename):
 
         points.append(TrackPoint(
             time=point.time,
-            latitude=point.latitude,
-            longitude=point.longitude,
+            lat=point.latitude,
+            lon=point.longitude,
             altitude=point.elevation,
-            speed=speed
+            speed=speed,
+            bearing=None
         ))
 
     return points
@@ -127,6 +128,7 @@ RACECHRONO_LAT_FIELD = 'Latitude (deg)'
 RACECHRONO_LON_FIELD = 'Longitude (deg)'
 RACECHRONO_ALT_FIELD = 'Altitude (m)'
 RACECHRONO_SPEED_FIELD = 'Speed (m/s)'
+RACECHRONO_BEARING_FIELD = 'Bearing (deg)'
 
 RACECHRONO_MAX_HEADER_LINES = 20
 RACECHRONO_INVALID_ROWS_THRESHOLD = 50
@@ -163,10 +165,11 @@ def _load_racechrono_csv_points(filename):
             time = datetime.fromtimestamp(time_seconds).replace(microsecond=time_microseconds)
             points.append(TrackPoint(
                 time=time,
-                latitude=float(row[RACECHRONO_LAT_FIELD]),
-                longitude=float(row[RACECHRONO_LON_FIELD]),
+                lat=float(row[RACECHRONO_LAT_FIELD]),
+                lon=float(row[RACECHRONO_LON_FIELD]),
                 altitude=float(row[RACECHRONO_ALT_FIELD]),
-                speed=float(row[RACECHRONO_SPEED_FIELD])
+                speed=float(row[RACECHRONO_SPEED_FIELD]),
+                bearing=float(row[RACECHRONO_BEARING_FIELD]),
             ))
 
         except KeyError:
@@ -187,6 +190,7 @@ RACEBOX_LAT_FIELD = 'Lat'
 RACEBOX_LON_FIELD = 'Lon'
 RACEBOX_ALT_FIELD = 'Alt (m)'
 RACEBOX_SPEED_FIELD = 'Speed (kph)'
+RACEBOX_BEARING_FIELD = 'Course (deg)'
 RACEBOX_TIME_FORMAT = ''
 
 
@@ -200,10 +204,11 @@ def _load_racebox_csv_points(filename):
         try:
             points.append(TrackPoint(
                 time=dateutil.parser.parse(row[RACEBOX_TIME_FIELD]),
-                latitude=float(row[RACEBOX_LAT_FIELD]),
-                longitude=float(row[RACEBOX_LON_FIELD]),
+                lat=float(row[RACEBOX_LAT_FIELD]),
+                lon=float(row[RACEBOX_LON_FIELD]),
                 altitude=float(row[RACEBOX_ALT_FIELD]),
-                speed=float(row[RACEBOX_SPEED_FIELD]) / 3.6  # Converting from kph to m/s
+                speed=float(row[RACEBOX_SPEED_FIELD]) / 3.6,  # Converting from kph to m/s
+                bearing=float(row[RACEBOX_BEARING_FIELD])
             ))
 
         except (KeyError, ValueError):
@@ -300,10 +305,11 @@ def _assign_micros_for_points(points, first_group=None):
         point = points[i]
         restored_points.append(TrackPoint(
             time=point.time.replace(microsecond=micros_idx * 100000),
-            latitude=point.latitude,
-            longitude=point.longitude,
+            lat=point.latitude,
+            lon=point.longitude,
             altitude=point.altitude,
-            speed=point.speed
+            speed=point.speed,
+            bearing=point.bearing
         ))
         micros_idx += 1
 

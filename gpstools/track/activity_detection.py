@@ -30,9 +30,8 @@ def get_activity_segments_for_track(track, activity_detection_params=DEFAULT_ACT
                 track.points[end_idx]
             )
             return [new_segment]
-
-        print("Dropping candidate by duration %d" % segment_duration)
-        return []
+        else:
+            return []
 
     for i in range(track.len):
         if segment_start_idx is None:
@@ -67,10 +66,11 @@ def get_activity_segments_for_track(track, activity_detection_params=DEFAULT_ACT
                 is_segment_active = True
                 segment_end_idx = None
 
-    # Adding last segment
-    if segment_end_idx is None:
-        segment_end_idx = track.len - 1
+    if segment_start_idx is not None:
+        # Adding last segment
+        if segment_end_idx is None:
+            segment_end_idx = track.len - 1
 
-    activity_segments.extend(try_add_activity_segment(segment_start_idx, segment_end_idx))
+        activity_segments.extend(try_add_activity_segment(segment_start_idx, segment_end_idx))
 
     return activity_segments

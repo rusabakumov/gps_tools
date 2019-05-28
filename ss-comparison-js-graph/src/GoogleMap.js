@@ -26,9 +26,6 @@ class GoogleMap extends React.Component {
 		)
 	}
 
-  	// This example creates a 2-pixel-wide red polyline showing the path of
-	// the first trans-Pacific flight between Oakland, CA, and Brisbane,
-	// Australia which was made by Charles Kingsford Smith.
 	initMap() {
 		var map = new window.google.maps.Map(document.getElementById('map'), {
 		  zoom: 3,
@@ -85,5 +82,5 @@ class GoogleMap extends React.Component {
 }
 
 export default scriptLoader(
-  'https://maps.googleapis.com/maps/api/js?key=***REMOVED***'
+  'https://maps.googleapis.com/maps/api/js?key=<insert your key>'
 )(GoogleMap)

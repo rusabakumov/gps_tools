@@ -1,17 +1,17 @@
 import haversine
 
-from gpstools.config import POINT_DISTANCE_THRESHOLD_KM
+from gpstools.config import SPARSE_TRACK_DISTANCE_THRESHOLD_KM
 from gpstools.track.track import Track
 
 
-def build_sparse_track(track, distance_threshold=POINT_DISTANCE_THRESHOLD_KM):
+def build_sparse_track(track, distance_threshold=SPARSE_TRACK_DISTANCE_THRESHOLD_KM):
     last_point = track.points[0]
     reference_points = [last_point]
 
     for point in track.points:
         dist = haversine.haversine(
-            (point.latitude, point.longitude),
-            (last_point.latitude, last_point.longitude)
+            (point.lat, point.lon),
+            (last_point.lat, last_point.lon)
         )
 
         if dist > distance_threshold:

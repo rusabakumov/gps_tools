@@ -3,6 +3,7 @@ from datetime import datetime
 
 from gpstools.config import POINT_DISTANCE_THRESHOLD_KM
 from gpstools.track.speed_calculation import *
+from gpstools.track.normalization import DEFAULT_TRACK_NORMALIZATION_PARAMS, normalize_by_neighbor_weights
 
 
 class Coords:
@@ -29,34 +30,36 @@ class Coords:
 # speed - double (m/s)
 class TrackPoint:
 
-    def __init__(self, time, latitude, longitude, altitude, speed):
+    def __init__(self, time, lat, lon, altitude, speed, bearing):
         self.time = time
-        self.latitude = latitude
-        self.longitude = longitude
+        self.lat = lat
+        self.lon = lon
         self.altitude = altitude
         self.speed = speed
+        self.bearing = bearing
 
     def __repr__(self):
         if self.speed:
             return "Point %.4f, %.4f at %s, speed %.4f m/s" % (
-                self.latitude, self.longitude, datetime.strftime(self.time, '%Y-%m-%dT%H:%M:%S.%f'), self.speed
+                self.lat, self.lon, datetime.strftime(self.time, '%Y-%m-%dT%H:%M:%S.%f'), self.speed
             )
         else:
             return "Point %.4f, %.4f at %s" % (
-                self.latitude, self.longitude, datetime.strftime(self.time, '%Y-%m-%dT%H:%M:%S.%f')
+                self.lat, self.lon, datetime.strftime(self.time, '%Y-%m-%dT%H:%M:%S.%f')
             )
 
     def get_coords(self):
-        return Coords(self.latitude, self.longitude)
+        return Coords(self.lat, self.lon)
 
 
 class Track:
 
     def __init__(self, name, points, speed_params, norm_params):
         self.name = name
-        self.points = points
         self.speed_params = speed_params if speed_params else DEFAULT_SPEED_PARAMS
-        self.norm_params = norm_params if norm_params else None  # Not used now
+        self.norm_params = norm_params if norm_params else DEFAULT_TRACK_NORMALIZATION_PARAMS
+
+        self.points = self._normalize_points(points)
 
         self.len = len(points)
         assert len(points) > 0
@@ -65,6 +68,7 @@ class Track:
         self._init_point_stat_arrays()
 
         self.subsecond_precision = self._has_subsecond_precision()
+        self.has_bearing_data = self._has_bearing_data()
         self.speed = self._calculate_speed()
 
         self._init_stats()
@@ -81,6 +85,18 @@ class Track:
                 speed_data_available = False
 
         return speed_data_available
+
+    def _has_bearing_data(self):
+        """
+        Some tracks do not have exact speed data present in track,
+        so we need to fall back to inaccurate speed calculation methods
+        """
+        bearing_data_available = True
+        for point in self.points:
+            if point.bearing is None:
+                bearing_data_available = False
+
+        return bearing_data_available
 
     def _has_subsecond_precision(self):
         for i in range(self.len):
@@ -101,8 +117,8 @@ class Track:
 
         for i in range(self.len):
             cur_point = self.points[i]
-            self.lat.append(cur_point.latitude)
-            self.lon.append(cur_point.longitude)
+            self.lat.append(cur_point.lat)
+            self.lon.append(cur_point.lon)
             self.time.append(cur_point.time)
             self.micros_from_start.append(get_timedelta_micros(cur_point.time, start_time))
 
@@ -131,27 +147,37 @@ class Track:
             print('Calculating speed based on distance')
             return calculate_speed_by_distance(self.points, smoothing_window)
 
+    def _normalize_points(self, points):
+        if self.norm_params.neighbor_weights:
+            return normalize_by_neighbor_weights(points, self.norm_params.neighbor_weights)
+        else:
+            return points
+
     def _init_stats(self):
-        self._start_time = self.points[0].time
-        self._end_time = self.points[self.len - 1].time
-        self._total_time = self._end_time - self._start_time
+        self.start_time = self.points[0].time
+        self.end_time = self.points[self.len - 1].time
+        self.total_time = self.end_time - self.start_time
 
         self._total_distance = self.dist_from_start[-1]
-        self._total_avg_speed = self._total_distance / self._total_time.total_seconds() * 3600
+        self.avg_speed = self._total_distance / self.total_time.total_seconds() * 3600
 
         self.max_speed = max(self.speed)
-        self.avg_speed = avg(self.speed)
+        self._avg_speed_value = avg(self.speed)
 
     def print_stats(self):
         print('Track %s' % self.name)
-        print('Start time: %s' % self._start_time)
-        print('End time: %s' % self._end_time)
-        print('Total time: %s' % self._total_time)
+        print('Start time: %s' % self.start_time)
+        print('End time: %s' % self.end_time)
+        print('Total time: %s' % self.total_time)
         print('Total distance travelled: %.3f km' % self._total_distance)
-        print('Total average speed: %.2f kph' % self._total_avg_speed)
-        print('Max speed: %.2f kph' % self.max_speed)
         print('Average speed: %.2f kph' % self.avg_speed)
+        print('Max speed: %.2f kph' % self.max_speed)
+        print('Average speed value: %.2f kph' % self._avg_speed_value)
         print('\n')
+
+    def print_params(self):
+        print(self.speed_params)
+        print(self.norm_params)
 
     def find_point_index(self, point_to_check):
         for i in range(self.len):

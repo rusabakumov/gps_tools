@@ -25,10 +25,27 @@ def plot_distance_speed_graph(tracks):
     plt.ylabel('speed (kph)')
     fig.add_axes(ax)
 
-    for i in range(len(tracks)):
-        track = tracks[i]
+    for i, track in enumerate(tracks):
         color = COLORS[i]
         plt.plot(track.dist_from_start, track.speed, color=color, lw=0.75, alpha=0.8)
+
+
+def plot_distance_speed_graph_aligned(tracks):
+    fig = plt.figure()
+    ax = plt.Axes(fig, [0., 0., 2.5, 2.5], )
+    plt.xlabel('distance (km)')
+    plt.ylabel('speed (kph)')
+    fig.add_axes(ax)
+
+    for i, track in enumerate(tracks):
+        color = COLORS[i]
+        dist_from_start = []
+        speed = []
+        for point in track.points:
+            dist_from_start.append(point.dist)
+            speed.append(point.speed)
+
+        plt.plot(dist_from_start, speed, color=color, lw=0.75, alpha=0.8)
 
 
 def generate_reference_selection_graph(tracks):
@@ -128,7 +145,6 @@ def _output_tracks_map_json(filename, tracks):
 
 
 # Generates separate folder with html and js to show
-# TODO Not working, fix for new SSComparison structure
 def generate_ss_analysis_graph(name, graph_title, tracks):
     graph_path = os.path.join(GRAPH_OUTPUT_PATH, name)
     module_path = os.path.dirname(gpstools.__file__)
@@ -143,24 +159,22 @@ def _output_ss_comparison_json(filename, title, tracks):
             track = tracks[i]
             color_code = COLOR_CODES[i]
             data = []
-            dist_data = track.get_dist()
-            speed_data = track.get_speed()
-            for i in range(track.len):
+            for i, point in enumerate(track.points):
                 data.append({
-                    'x': dist_data[i],
-                    'y': speed_data[i],
-                    'lat': track.lat[i],
-                    'lon': track.lon[i],
+                    'x': point.dist,
+                    'y': point.speed,
+                    'lat': point.lat,
+                    'lon': point.lon,
                     'idx': i,
-                    'micros': track.micros[i]
+                    'micros': point.micros
                 })
 
             tracks_json.append({
                 "name": track.name,
-                "duration": track.micros[-1],
+                "duration": track.points[-1].micros,
                 "max_speed": track.max_speed,
                 "avg_speed": track.avg_speed,
-                "finished": track.finished,
+                "finished": track.is_finished,
                 "color": color_code,
                 "data": data,
                 "line_width": 1.0 if not track.subsecond_precision else 0.5
