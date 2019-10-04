@@ -11,4 +11,6 @@ tmp/
 build/
 node_modules/
 
+gpstoos/resources
+
 publish_graph.sh

@@ -45,7 +45,7 @@ def get_timedelta_micros(time1, time2):
     return time_delta.seconds * 1000000 + time_delta.microseconds
 
 
-# Calculates haversine dist between two TrackPoint or Coordinates objects
+# Calculates haversine dist between two TrackPoint or Coords objects
 def get_dist(point1, point2):
     return haversine.haversine(
         (point1.lat, point1.lon),

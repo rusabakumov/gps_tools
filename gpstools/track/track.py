@@ -3,7 +3,8 @@ from datetime import datetime
 
 from gpstools.config import POINT_DISTANCE_THRESHOLD_KM
 from gpstools.track.speed_calculation import *
-from gpstools.track.normalization import DEFAULT_TRACK_NORMALIZATION_PARAMS, normalize_by_neighbor_weights
+from gpstools.track.normalization import DEFAULT_TRACK_NORMALIZATION_PARAMS, normalize_minute_starts, \
+    normalize_by_neighbor_weights
 
 
 class Coords:
@@ -69,7 +70,7 @@ class Track:
 
         self.subsecond_precision = self._has_subsecond_precision()
         self.has_bearing_data = self._has_bearing_data()
-        self.speed = self._calculate_speed()
+        self.speed = self._calculate_speed()  # Kph
 
         self._init_stats()
 
@@ -148,10 +149,15 @@ class Track:
             return calculate_speed_by_distance(self.points, smoothing_window)
 
     def _normalize_points(self, points):
-        if self.norm_params.neighbor_weights:
-            return normalize_by_neighbor_weights(points, self.norm_params.neighbor_weights)
+        if self.norm_params.align_to_minutes:
+            normalized_by_minutes = normalize_minute_starts(points)
         else:
-            return points
+            normalized_by_minutes = points
+
+        if self.norm_params.neighbor_weights:
+            return normalize_by_neighbor_weights(normalized_by_minutes, self.norm_params.neighbor_weights)
+        else:
+            return normalized_by_minutes
 
     def _init_stats(self):
         self.start_time = self.points[0].time
@@ -162,7 +168,6 @@ class Track:
         self.avg_speed = self._total_distance / self.total_time.total_seconds() * 3600
 
         self.max_speed = max(self.speed)
-        self._avg_speed_value = avg(self.speed)
 
     def print_stats(self):
         print('Track %s' % self.name)
@@ -172,7 +177,6 @@ class Track:
         print('Total distance travelled: %.3f km' % self._total_distance)
         print('Average speed: %.2f kph' % self.avg_speed)
         print('Max speed: %.2f kph' % self.max_speed)
-        print('Average speed value: %.2f kph' % self._avg_speed_value)
         print('\n')
 
     def print_params(self):

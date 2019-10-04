@@ -16,6 +16,8 @@ class SSComparison extends Component {
 
     this.state = {
       tracks: [],
+      map_points: [],
+      speed_points: [],
       sector: null
     };
 
@@ -35,6 +37,8 @@ class SSComparison extends Component {
     this.setState({
       title: data.title,
       tracks: data.tracks,
+      map_points: data.map_points,
+      speed_points: data.speed_points,
       chart: chart
     });
   }
@@ -50,7 +54,13 @@ class SSComparison extends Component {
             <Col><StatsTable tracks={this.state.tracks} sector={this.state.sector}/></Col>
           </Row>
           <Row>
-            <Col><GoogleMap tracks={this.state.tracks}/></Col>
+            <Col>
+                <GoogleMap
+                    tracks={this.state.tracks}
+                    map_points={this.state.map_points}
+                    speed_points={this.state.speed_points}
+                />
+            </Col>
           </Row>
         </Container>
       </div>

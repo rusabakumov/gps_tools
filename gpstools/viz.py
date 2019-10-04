@@ -9,7 +9,8 @@ from jinja2 import Environment, PackageLoader
 import gpstools
 
 COLORS = ['red', 'blue', 'black', 'green']
-COLOR_CODES = ['#4062f9', '#f44b42', '#45e069', '#fff049', '#24CBE5', '#2c6633', '#45215b', '#3c6887', '#52f2b7', '#ff3dbb', '#ff8f26']
+COLOR_CODES = ['#4062f9', '#f44b42', '#45e069', '#fff049', '#24CBE5', '#2c6633', '#45215b', '#3c6887', '#52f2b7',
+               '#ff3dbb', '#ff8f26']
 
 TMP_PATH = 'tmp'
 GRAPH_OUTPUT_PATH = 'viz'
@@ -145,14 +146,18 @@ def _output_tracks_map_json(filename, tracks):
 
 
 # Generates separate folder with html and js to show
-def generate_ss_analysis_graph(name, graph_title, tracks):
+def generate_ss_analysis_graph(name, graph_title, reference_track, tracks, speed_comparison_points):
     graph_path = os.path.join(GRAPH_OUTPUT_PATH, name)
     module_path = os.path.dirname(gpstools.__file__)
-    shutil.copytree(os.path.join(module_path, 'resources', 'speed_comparison'), graph_path)  # Fails if directory already exists
-    _output_ss_comparison_json(os.path.join(graph_path, GRAPH_DATA_FILE), graph_title, tracks)
 
+    # Fails if directory already exists
+    shutil.copytree(os.path.join(module_path, 'resources', 'speed_comparison'), graph_path)
 
-def _output_ss_comparison_json(filename, title, tracks):
+    # Using first track to build track on map
+    _output_ss_comparison_json(os.path.join(graph_path, GRAPH_DATA_FILE), graph_title,
+                               reference_track, tracks, speed_comparison_points)
+
+def _output_ss_comparison_json(filename, title, reference_track, tracks, speed_comparison_points):
     with open(filename, "w+") as json_file:
         tracks_json = []
         for i in range(len(tracks)):
@@ -180,10 +185,27 @@ def _output_ss_comparison_json(filename, title, tracks):
                 "line_width": 1.0 if not track.subsecond_precision else 0.5
             })
 
+        map_points_json = []
+        for point in reference_track.points:
+            map_points_json.append({
+                'lat': point.lat,
+                'lon': point.lon
+            })
+
+        speed_points_json = []
+        for point in speed_comparison_points:
+            speed_points_json.append({
+                'lat': point.lat,
+                'lon': point.lon,
+                'speeds': point.speeds
+            })
+
         json.dump(
             {
                 "title": title,
-                "tracks": tracks_json
+                "tracks": tracks_json,
+                "map_points": map_points_json,
+                "speed_points": speed_points_json
             },
             json_file
         )

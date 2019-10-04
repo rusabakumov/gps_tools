@@ -1,3 +1,5 @@
+from haversine import haversine
+
 from gpstools.config import POINT_DISTANCE_THRESHOLD_KM
 from gpstools.track.activity_detection import DEFAULT_ACTIVITY_DETECTION_PARAMS, get_activity_segments_for_track
 from gpstools.track.speed_calculation import DEFAULT_SPEED_PARAMS
@@ -6,6 +8,9 @@ from gpstools.utils import get_dist
 from gpstools.viz import generate_ss_analysis_graph
 
 POINT_ALIGNMENT_SEARCH_WINDOW = 50
+
+MAP_POINTS_MIN_DIST_KM = 0.05
+TRACK_POINT_SEARCH_RADIUS_KM = 0.025
 
 
 class SSAnalysisTrackPoint:
@@ -53,6 +58,15 @@ class SSAnalysisTrack:
         print('\n')
 
 
+class SpeedComparisonPoint:
+    """Contains speeds for all tracks in comparison for given point (for closer point on track)"""
+
+    def __init__(self, lat, lon, speeds):
+        self.lat = lat
+        self.lon = lon
+        self.speeds = speeds
+
+
 class SSAnalysisGraph:
 
     def __init__(
@@ -67,6 +81,7 @@ class SSAnalysisGraph:
         self.activity_detection_params = activity_detection_params
         self.point_distance_threshold_km = point_distance_threshold_km
         self.tracks, tracks_finished = self._select_segments_by_reference_track(tracks)
+        self.speed_comparison_points = self._build_speed_comparison_points(reference_track, self.tracks)
 
         print("Found %d tracks out of %d initial tracks" % (len(self.tracks), len(tracks)))
 
@@ -94,12 +109,15 @@ class SSAnalysisGraph:
             self.aligned_tracks[i].print_stats()
 
     def build_comparison_graph(self, name, title):
-        generate_ss_analysis_graph(name, title, self.aligned_tracks)
+        generate_ss_analysis_graph(name, title, self.reference_track, self.aligned_tracks, self.speed_comparison_points)
 
-    # Tries to find closest points in track along reference points
-    # same_point_dist_threshold - points within this threshold counts as the same for reference points
-    # dist_threshold_max - helps us understand that we moved far away from ref point
     def _align_track_along_reference(self, reference_track, track, is_finished):
+        """
+            Tries to find closest points in track along reference points
+            same_point_dist_threshold - points within this threshold counts as the same for reference points
+            dist_threshold_max - helps us understand that we moved far away from ref point
+        """
+
         ref_points = reference_track.points
         saved_ref_idx = 0
         filtered_points = []
@@ -181,3 +199,56 @@ class SSAnalysisGraph:
                     segment_id += 1
 
         return cropped_tracks, tracks_finished
+
+    def _build_speed_comparison_points(self, reference_track, tracks):
+        """
+            Selects sparse subset of reference track points and finds speeds of closest points of
+            all tracks in comparison. If we don't have close point for any of comparison tracks, point is discarded
+            from sparse subset
+        """
+
+        track_indices = [0] * len(tracks)
+        map_points = []
+
+        for ref_idx, ref_point in enumerate(reference_track.points):
+            if len(map_points) == 0 or get_dist(map_points[-1], ref_point) > MAP_POINTS_MIN_DIST_KM:
+                speeds = []
+                all_speeds_found = True
+
+                # Searching for closest point to ref_point in each track
+                for track_id, track in enumerate(tracks):
+                    min_idx = track_indices[track_id]
+
+                    if min_idx == track.len:
+                        # When we already traversed track to the end
+                        continue
+
+                    # Copy-paste from '_align_track_along_reference', but let it be so
+                    closest_idx = 0
+                    min_dist = 100000000  # Max value as a stub
+                    max_idx = min(min_idx + POINT_ALIGNMENT_SEARCH_WINDOW, track.len)
+
+                    for idx in range(min_idx, max_idx):
+                        dist_from_ref = get_dist(ref_point, track.points[idx])
+                        if dist_from_ref < min_dist:
+                            min_dist = dist_from_ref
+                            closest_idx = idx
+
+                    if closest_idx != 0:
+                        track_indices[track_id] = closest_idx
+
+                    if min_dist <= TRACK_POINT_SEARCH_RADIUS_KM:
+                        # We've found suitable point
+                        speeds.append(track.speed[closest_idx])  # Already in kph
+                    else:
+                        all_speeds_found = False
+                        break
+
+                if all_speeds_found:
+                    map_points.append(SpeedComparisonPoint(
+                        lat = ref_point.lat,
+                        lon = ref_point.lon,
+                        speeds = speeds
+                    ))
+
+        return map_points

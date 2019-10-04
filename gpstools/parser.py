@@ -9,6 +9,8 @@ from collections import namedtuple
 
 from gpstools.track.track import Track, TrackPoint
 
+from gpstools.lib.latlonconv import string2geocoord, Latitude, Longitude
+
 CSV_EXTENSION = 'csv'
 GPX_EXTENSION = 'gpx'
 SUPPORTED_EXTENSIONS = [CSV_EXTENSION, GPX_EXTENSION]
@@ -24,15 +26,15 @@ class TrackParsingError(Exception):
 TrackFile = namedtuple('TrackFile', ['path', 'name', 'ext'])
 
 
-def load_track(filepath):
+def load_track(filepath, norm_params=None):
     track_file = _check_file_extension(filepath)
     if track_file:
-        return _load_track_file(track_file)
+        return _load_track_file(track_file, norm_params)
     else:
         raise TrackParsingError("File %s is not supported!" % filepath)
 
 
-def load_tracks_in_path(path):
+def load_tracks_in_path(path, norm_params=None):
     """ @:returns list of parsed tracks """
     track_files = []
     for f in os.listdir(path):
@@ -42,7 +44,7 @@ def load_tracks_in_path(path):
 
     tracks = []
     for file in track_files:
-        track_opt = _load_track_file(file)
+        track_opt = _load_track_file(file, norm_params)
         if track_opt:
             tracks.append(track_opt)
 
@@ -64,17 +66,36 @@ def _check_file_extension(filepath):
     return None
 
 
-def _load_track_file(file):
+def _load_track_file(file, norm_params):
     print('Processing file %s' % file.path)
     try:
         if file.ext == GPX_EXTENSION:
             points = _load_gpx_points(file.path)
         elif file.ext == CSV_EXTENSION:
+            points = []
+
             try:
                 points = _load_racebox_csv_points(file.path)
+                print("Detected racebox track")
             except TrackParsingError as err:
-                print("Looks like not a racebox track, trying racechrono format, error was %s" % err.message)
-                points = _load_racechrono_csv_points(file.path)
+                print("Looks like not a racebox track, error was %s" % err.message)
+
+            if len(points) == 0:
+                try:
+                    points = _load_racechrono_csv_points(file.path)
+                    print("Detected racechrono track")
+                except TrackParsingError as err:
+                    print("Looks like not a racechrono track, error was %s" % err.message)
+
+            if len(points) == 0:
+                try:
+                    points = _load_racelogic_csv_points(file.path)
+                    print("Detected racelogic track")
+                except TrackParsingError as err:
+                    print("Looks like not a racelogic track, error was %s" % err.message)
+
+            if len(points) == 0:
+                raise TrackParsingError("File %s is not supported!" % file.path)
         else:
             raise TrackParsingError("File %s is not supported!" % file.path)
 
@@ -85,7 +106,7 @@ def _load_track_file(file):
     fixed_points = _fix_points_errors(points)
 
     print('Load track %s with %d points' % (file.name, len(fixed_points)))
-    return Track(file.name, fixed_points, speed_params=None, norm_params=None)
+    return Track(file.name, fixed_points, speed_params=None, norm_params=norm_params)
 
 
 def _load_gpx_points(filename):
@@ -124,8 +145,13 @@ def _load_gpx_points(filename):
 
 
 RACECHRONO_TIME_FIELD = 'Time (s)'
+
 RACECHRONO_LAT_FIELD = 'Latitude (deg)'
 RACECHRONO_LON_FIELD = 'Longitude (deg)'
+
+RACECHRONO_LAT_FIELD_IOS = 'Latitude'
+RACECHRONO_LON_FIELD_IOS = 'Longitude'
+
 RACECHRONO_ALT_FIELD = 'Altitude (m)'
 RACECHRONO_SPEED_FIELD = 'Speed (m/s)'
 RACECHRONO_BEARING_FIELD = 'Bearing (deg)'
@@ -165,8 +191,8 @@ def _load_racechrono_csv_points(filename):
             time = datetime.fromtimestamp(time_seconds).replace(microsecond=time_microseconds)
             points.append(TrackPoint(
                 time=time,
-                lat=float(row[RACECHRONO_LAT_FIELD]),
-                lon=float(row[RACECHRONO_LON_FIELD]),
+                lat=float(row[RACECHRONO_LAT_FIELD_IOS]),
+                lon=float(row[RACECHRONO_LON_FIELD_IOS]),
                 altitude=float(row[RACECHRONO_ALT_FIELD]),
                 speed=float(row[RACECHRONO_SPEED_FIELD]),
                 bearing=float(row[RACECHRONO_BEARING_FIELD]),
@@ -215,6 +241,57 @@ def _load_racebox_csv_points(filename):
             raise TrackParsingError("Found invalid row %d: %s" % (len(points) + 1, str(row)))
 
     print('Load racebox track %s with %d points' % (filename, len(points)))
+
+    return points
+
+
+RACELOGIC_TIME_FIELD = 'Time'
+RACELOGIC_LAT_FIELD = 'Latitude'
+RACELOGIC_LON_FIELD = 'Longitude'
+RACELOGIC_ALT_FIELD = 'Height'
+RACELOGIC_SPEED_FIELD = 'Velocity'
+RACELOGIC_BEARING_FIELD = 'Heading'
+RACELOGIC_TIME_FORMAT = ''
+
+RACELOGIC_MAX_HEADER_LINES = 7
+
+
+def _load_racelogic_csv_points(filename):
+    csv_file = open(filename, newline='')
+
+    # Seeking position for track start
+    # Racelogic has 7 lines of headers, then empty line and the rest of the lines are actual track
+    # Seeking for it
+    line = csv_file.readline()
+    lines_skipped = 1
+    if '[File]' not in line:
+        raise TrackParsingError('First line should contain "[File]"!')
+    while lines_skipped < RACELOGIC_MAX_HEADER_LINES:
+        csv_file.readline()
+        lines_skipped += 1
+
+    track = csv.DictReader(csv_file, delimiter=',')
+    points = []
+
+    for row in track:
+        try:
+            lat = string2geocoord(row[RACELOGIC_LAT_FIELD], Latitude, "d%°%M% %H").decimal_degree
+            # For some reason we have invalid hemisphere in logs
+            lon = -string2geocoord(row[RACELOGIC_LON_FIELD], Longitude, "d%°%M% %H").decimal_degree
+
+            points.append(TrackPoint(
+                time=dateutil.parser.parse(row[RACELOGIC_TIME_FIELD]),
+                lat=lat,
+                lon=lon,
+                altitude=float(row[RACELOGIC_ALT_FIELD]),
+                speed=float(row[RACELOGIC_SPEED_FIELD]) / 3.6,  # Converting from kph to m/s
+                bearing=float(row[RACELOGIC_BEARING_FIELD])
+            ))
+
+        except (KeyError, ValueError):
+            raise TrackParsingError("Found invalid row %d: %s" % (len(points) + 1, str(row)))
+
+    print('Load racelogic track %s with %d points' % (filename, len(points)))
 
     return points
 

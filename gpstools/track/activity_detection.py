@@ -2,10 +2,11 @@ from collections import namedtuple
 from gpstools.track.track import TrackActivitySegment
 
 ActivityDetectionParams = namedtuple('ActivityDetectionParams',
-                                     ['distance_eps', 'segment_max_allow_pause', 'segment_min_duration'])
+                                     ['align_to_minutes', 'speed_eps', 'segment_max_allow_pause', 'segment_min_duration'])
 
 DEFAULT_ACTIVITY_DETECTION_PARAMS = ActivityDetectionParams(
-    distance_eps=0.00005,
+    align_to_minutes=False,
+    speed_eps=2,
     segment_max_allow_pause=5,
     segment_min_duration=100
 )
@@ -40,7 +41,7 @@ def get_activity_segments_for_track(track, activity_detection_params=DEFAULT_ACT
             segment_end_idx = None
             is_segment_active = False
         else:
-            if track.dist[i] < activity_detection_params.distance_eps:
+            if track.speed[i] < activity_detection_params.speed_eps:
                 if not is_segment_active:
                     # Moving segment start forward, no movement
                     segment_start_idx = i
@@ -65,6 +66,20 @@ def get_activity_segments_for_track(track, activity_detection_params=DEFAULT_ACT
                 # We have noticed movement in segment - it should be marked as active and end candidate should be dropped
                 is_segment_active = True
                 segment_end_idx = None
+
+                # We should normalize segment start idx - begin it either from zero speed (start point) or from minute
+                # start (for rally specials)
+                if activity_detection_params.align_to_minutes:
+                    # Normalizing to minute start
+                    cur_minute = track.time[segment_start_idx].minute
+
+                    while segment_start_idx > 0 and track.time[segment_start_idx - 1].minute == cur_minute:
+                        segment_start_idx -= 1
+                else:
+                    # Normalizing to minimal speed
+                    while segment_start_idx > 0 \
+                            and 0 < track.speed[segment_start_idx - 1] < track.speed[segment_start_idx]:
+                        segment_start_idx -= 1
 
     if segment_start_idx is not None:
         # Adding last segment
