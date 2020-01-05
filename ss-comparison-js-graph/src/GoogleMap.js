@@ -164,5 +164,5 @@ class GoogleMap extends React.Component {
 //            });
 
 export default scriptLoader(
-  'https://maps.googleapis.com/maps/api/js?key=***REMOVED***'
+  'https://maps.googleapis.com/maps/api/js?key=<api key>'
 )(GoogleMap)
